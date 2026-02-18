@@ -16,8 +16,9 @@ namespace nanodb {
     struct alignas(32) Node {
         
         // Header
-        id_t id;          // External Identifier
-        int max_layer;    // Highest layer this node participates in
+        id_t id;            // External Identifier
+        int max_layer;      // Highest layer this node participates in
+        bool is_deleted;    // Tombstone flag — set by delete_vector(), filtered in search()
 
 
         // Vector Data
@@ -37,7 +38,7 @@ namespace nanodb {
         Node() = default; // Needed for casting raw memory
 
         Node(id_t external_id, int level, const std::vector<float>& vec_data) 
-            : id(external_id), max_layer(level) {
+            : id(external_id), max_layer(level), is_deleted(false) {
             
             // Safe copy of vector data
             size_t copy_size = (vec_data.size() > config::VECTOR_DIM) ? config::VECTOR_DIM : vec_data.size();

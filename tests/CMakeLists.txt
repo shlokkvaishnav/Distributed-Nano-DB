@@ -1,8 +1,16 @@
 # tests/CMakeLists.txt
-project(NanoDBTests)
 
-# If you are using GoogleTest, you would add logic here.
-# For now, we will leave it empty or just add a dummy executable
-# so CMake stops complaining.
+# Test: Distance Functions
+add_executable(test_distance test_distance.cpp)
+target_link_libraries(test_distance PRIVATE nano_core)
+add_test(NAME DistanceFunctions COMMAND test_distance)
 
-# add_executable(run_tests test_main.cpp)
+# Test: HNSW Insert / Search / Delete
+add_executable(test_hnsw test_hnsw.cpp)
+target_link_libraries(test_hnsw PRIVATE nano_core OpenMP::OpenMP_CXX)
+add_test(NAME HNSWGraph COMMAND test_hnsw)
+
+# Test: Persistence (save/reload round-trip)
+add_executable(test_persistence test_persistence.cpp)
+target_link_libraries(test_persistence PRIVATE nano_core OpenMP::OpenMP_CXX)
+add_test(NAME Persistence COMMAND test_persistence)

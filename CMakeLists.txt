@@ -15,23 +15,29 @@ endif()
 find_package(OpenMP REQUIRED)
 
 # Create the Core Library
-# We split the logic into a library so both the Exe and Python can use it.
 add_library(nano_core OBJECT
     src/core/distance.cpp
     src/storage/mmap_handler.cpp
-    # Note: hnsw.hpp is header-only, so we don't list a .cpp here
 )
 target_include_directories(nano_core PUBLIC include)
 
-# Build the C++ Executable (CLI)
+# Build the C++ Executable (CLI demo)
 add_executable(nano_db src/main.cpp)
 target_link_libraries(nano_db PRIVATE nano_core OpenMP::OpenMP_CXX)
 
-# Build the Python Module 
-add_subdirectory(extern/pybind11) # Initialize pybind11
-
+# Build the Python Module
+add_subdirectory(extern/pybind11)
 pybind11_add_module(nanodb_py src/python_bindings.cpp)
 target_link_libraries(nanodb_py PRIVATE nano_core OpenMP::OpenMP_CXX)
-
-# Rename output to just "nanodb" so we can "import nanodb"
 set_target_properties(nanodb_py PROPERTIES OUTPUT_NAME "nanodb")
+
+# ---- Benchmarks ----
+add_executable(benchmark_throughput benchmarks/benchmark_throughput.cpp)
+target_link_libraries(benchmark_throughput PRIVATE nano_core OpenMP::OpenMP_CXX)
+
+add_executable(benchmark_recall benchmarks/benchmark_recall.cpp)
+target_link_libraries(benchmark_recall PRIVATE nano_core OpenMP::OpenMP_CXX)
+
+# ---- Tests ----
+enable_testing()
+add_subdirectory(tests)

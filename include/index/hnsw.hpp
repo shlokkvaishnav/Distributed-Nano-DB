@@ -17,6 +17,17 @@
 
 namespace nanodb {
 
+    struct FileHeader {
+        uint32_t magic;
+        uint32_t element_count;
+        int32_t entry_point_id;
+        int32_t max_layer;
+        char reserved[48]; // pad to 64 bytes
+    };
+
+    static constexpr uint32_t NANODB_MAGIC = 0x4E444200; // "NDB\0"
+    static constexpr size_t HEADER_SIZE = sizeof(FileHeader);
+
     class HNSW {
     public:
         // -----------------------------------------------------------------------
@@ -36,15 +47,22 @@ namespace nanodb {
 
             size_t current_count = 0;
 
-            if (storage_.get_size() == 0) {
+            FileHeader* header = get_header();
+            if (header->magic != NANODB_MAGIC) {
+                // Fresh file — initialize header
+                header->magic = NANODB_MAGIC;
+                header->element_count = 0;
+                header->entry_point_id = -1;
+                header->max_layer = -1;
                 entry_point_id_ = -1;
                 current_max_layer_ = -1;
                 element_count_ = 0;
                 current_count = 0;
             } else {
-                entry_point_id_ = 0;
-                current_max_layer_ = 0;
-                element_count_ = storage_.get_size() / sizeof(Node);
+                // Existing index — restore state from header
+                entry_point_id_ = header->entry_point_id;
+                current_max_layer_ = header->max_layer;
+                element_count_ = header->element_count;
                 current_count = element_count_;
             }
 
@@ -63,7 +81,7 @@ namespace nanodb {
             Node new_node(id, level, vec_data);
 
             // Expand storage if needed (double-checked locking)
-            size_t offset = (size_t)id * sizeof(Node);
+            size_t offset = HEADER_SIZE + (size_t)id * sizeof(Node);
             if (offset + sizeof(Node) > storage_.get_size()) {
                 std::lock_guard<std::mutex> lock(global_resize_lock_);
                 if (offset + sizeof(Node) > storage_.get_size()) {
@@ -89,6 +107,7 @@ namespace nanodb {
                     current_max_layer_ = level;
                     #pragma omp atomic
                     element_count_++;
+                    persist_header();
                     if (!metadata.empty()) metadata_storage_.save_metadata(id, metadata);
                     return;
                 }
@@ -139,6 +158,8 @@ namespace nanodb {
 
             #pragma omp atomic
             element_count_++;
+
+            persist_header();
 
             if (!metadata.empty()) {
                 metadata_storage_.save_metadata(id, metadata);
@@ -203,8 +224,8 @@ namespace nanodb {
         //   - Periodic "compaction" (rebuild) is the standard remedy
         // -----------------------------------------------------------------------
         void delete_vector(id_t id) {
-            size_t offset = (size_t)id * sizeof(Node);
-            if (offset + sizeof(Node) > storage_.get_size()) return; // ID out of range
+            size_t offset = HEADER_SIZE + (size_t)id * sizeof(Node);
+            if (offset + sizeof(Node) > storage_.get_size()) return;
             Node* node = get_node(id);
             node->is_deleted = true;
         }
@@ -216,7 +237,7 @@ namespace nanodb {
 
         // Helper: check if a node has been deleted
         bool is_deleted(id_t id) {
-            size_t offset = (size_t)id * sizeof(Node);
+            size_t offset = HEADER_SIZE + (size_t)id * sizeof(Node);
             if (offset + sizeof(Node) > storage_.get_size()) return false;
             return get_node(id)->is_deleted;
         }
@@ -240,8 +261,19 @@ namespace nanodb {
         std::vector<std::unique_ptr<SpinLock>> node_locks_;
         std::mutex global_resize_lock_;
 
+        FileHeader* get_header() {
+            return reinterpret_cast<FileHeader*>(storage_.get_data());
+        }
+
+        void persist_header() {
+            FileHeader* h = get_header();
+            h->element_count = (uint32_t)element_count_;
+            h->entry_point_id = (int32_t)entry_point_id_;
+            h->max_layer = (int32_t)current_max_layer_;
+        }
+
         Node* get_node(id_t id) {
-            return reinterpret_cast<Node*>((char*)storage_.get_data() + (size_t)id * sizeof(Node));
+            return reinterpret_cast<Node*>((char*)storage_.get_data() + HEADER_SIZE + (size_t)id * sizeof(Node));
         }
 
         int get_random_level() {

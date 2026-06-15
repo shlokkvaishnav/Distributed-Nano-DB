@@ -56,7 +56,7 @@ static vector<id_t> brute_force_knn(const vector<float>& query,
 }
 
 int main() {
-    const int NUM_VECTORS  = 5000;
+    const int NUM_VECTORS  = 100000;
     const int NUM_QUERIES  = 100;
     const int K            = 10;
     const size_t DIM       = config::VECTOR_DIM;
@@ -87,7 +87,7 @@ int main() {
     fs::remove(meta_path);
 
     MMapHandler storage;
-    storage.open_file(db_path, 100 * 1024 * 1024);
+    storage.open_file(db_path, 200 * 1024 * 1024); // 200MB for 100k vectors
     HNSW index(storage, meta_path, DistanceMetric::L2);
 
     for (int i = 0; i < NUM_VECTORS; ++i)

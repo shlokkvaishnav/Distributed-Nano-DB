@@ -18,9 +18,12 @@ RUN mkdir build && cd build && \
     cmake --build . --target nano_server -j$(nproc)
 
 # Stage 2: Runtime
-FROM debian:bookworm-slim
+# Use debian:sid (unstable) which has GCC 13 packages
+FROM debian:sid-slim
 
-RUN apt-get update && apt-get install -y libgomp1 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y libstdc++6 libgomp1 && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

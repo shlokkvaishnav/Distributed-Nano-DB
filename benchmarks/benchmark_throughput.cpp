@@ -54,7 +54,7 @@ static void run_benchmark(int num_threads, int num_vectors,
     fs::remove(meta_path);
 
     MMapHandler storage;
-    storage.open_file(db_path, 100 * 1024 * 1024); // 100MB pre-allocation
+    storage.open_file(db_path, 200ULL * 1024 * 1024); // 200MB (enough for 100k vectors)
     HNSW index(storage, meta_path, DistanceMetric::L2);
 
     auto start = chrono::high_resolution_clock::now();
@@ -79,7 +79,7 @@ static void run_benchmark(int num_threads, int num_vectors,
 }
 
 int main() {
-    const int NUM_VECTORS = 10000;
+    const int NUM_VECTORS = 100000;
 
     cout << "============================================================\n";
     cout << "  NanoDB Throughput Benchmark\n";

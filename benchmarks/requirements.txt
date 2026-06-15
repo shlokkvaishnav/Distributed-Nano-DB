@@ -1,0 +1,4 @@
+faiss-cpu>=1.7.4
+hnswlib>=0.8.0
+numpy>=1.24.0
+requests>=2.31.0

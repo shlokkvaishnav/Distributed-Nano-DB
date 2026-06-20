@@ -32,7 +32,7 @@ struct ShardClient {
 
 int main() {
     const char* config_env = std::getenv("NANODB_CLUSTER_CONFIG");
-    std::string config_path = config_env ? config_env : "cluster.json";
+    std::string config_path = config_env ? config_env : "deploy/cluster.local.json";
 
     const char* port_env = std::getenv("NANODB_HTTP_PORT");
     int http_port = port_env ? std::atoi(port_env) : 8080;

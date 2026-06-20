@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package nanodb.cluster;
+
+service ShardService {
+  rpc Insert(InsertRequest) returns (InsertResponse);
+  rpc Search(SearchRequest) returns (SearchResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc Stats(StatsRequest) returns (StatsResponse);
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message InsertRequest {
+  string external_id = 1;
+  repeated float vector = 2;
+  string metadata = 3;
+}
+
+message InsertResponse {
+  bool ok = 1;
+  string error = 2;
+}
+
+message SearchRequest {
+  repeated float vector = 1;
+  int32 k = 2;
+}
+
+message SearchResult {
+  string external_id = 1;
+  float distance = 2;
+  string metadata = 3;
+}
+
+message SearchResponse {
+  repeated SearchResult results = 1;
+  bool ok = 2;
+  string error = 3;
+}
+
+message DeleteRequest {
+  string external_id = 1;
+}
+
+message DeleteResponse {
+  bool ok = 1;
+  string error = 2;
+}
+
+message StatsRequest {}
+
+message StatsResponse {
+  uint64 element_count = 1;
+  uint32 vector_dim = 2;
+  string shard_id = 3;
+}
+
+message PingRequest {}
+
+message PingResponse {
+  bool ok = 1;
+  string shard_id = 2;
+}

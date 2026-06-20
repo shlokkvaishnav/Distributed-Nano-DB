@@ -1,0 +1,59 @@
+version: "3.8"
+services:
+  shard-0:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.distributed
+      target: shard_node
+    environment:
+      - NANODB_SHARD_ID=0
+      - NANODB_GRPC_PORT=9090
+      - NANODB_DATA_DIR=/app/data
+    volumes:
+      - shard0-data:/app/data
+
+  shard-1:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.distributed
+      target: shard_node
+    environment:
+      - NANODB_SHARD_ID=1
+      - NANODB_GRPC_PORT=9090
+      - NANODB_DATA_DIR=/app/data
+    volumes:
+      - shard1-data:/app/data
+
+  shard-2:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.distributed
+      target: shard_node
+    environment:
+      - NANODB_SHARD_ID=2
+      - NANODB_GRPC_PORT=9090
+      - NANODB_DATA_DIR=/app/data
+    volumes:
+      - shard2-data:/app/data
+
+  coordinator:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.distributed
+      target: coordinator
+    environment:
+      - NANODB_CLUSTER_CONFIG=/app/cluster.json
+      - NANODB_HTTP_PORT=8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      - shard-0
+      - shard-1
+      - shard-2
+    volumes:
+      - ./cluster.docker.json:/app/cluster.json:ro
+
+volumes:
+  shard0-data:
+  shard1-data:
+  shard2-data:

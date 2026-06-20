@@ -1,0 +1,33 @@
+# syntax=docker/dockerfile:1
+FROM ubuntu:24.04 AS builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake git \
+    protobuf-compiler protobuf-compiler-grpc \
+    libprotobuf-dev libgrpc++-dev libgrpc-dev \
+    libomp-dev pkg-config && \
+    rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY . .
+RUN mkdir build && cd build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release \
+             -DNANODB_BUILD_PYTHON=OFF \
+             -DNANODB_BUILD_SERVER=OFF \
+             -DNANODB_BUILD_CLUSTER=ON && \
+    cmake --build . --target nano_shard_node nano_coordinator -j$(nproc)
+
+FROM ubuntu:24.04 AS runtime_base
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libprotobuf32t64 libgrpc++1.51t64 libgomp1 && \
+    rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+
+FROM runtime_base AS shard_node
+COPY --from=builder /app/build/nano_shard_node .
+RUN mkdir -p data
+EXPOSE 9090
+CMD ["./nano_shard_node"]
+
+FROM runtime_base AS coordinator
+COPY --from=builder /app/build/nano_coordinator .
+EXPOSE 8080
+CMD ["./nano_coordinator"]

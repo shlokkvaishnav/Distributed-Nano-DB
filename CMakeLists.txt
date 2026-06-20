@@ -50,6 +50,56 @@ if(NANODB_BUILD_SERVER)
     endif()
 endif()
 
+# ---- Distributed Cluster (gRPC) ----
+option(NANODB_BUILD_CLUSTER "Build the distributed cluster (coordinator + shard node)" ON)
+
+if(NANODB_BUILD_CLUSTER)
+    find_package(Protobuf REQUIRED)
+    find_package(gRPC CONFIG REQUIRED)
+
+    set(NANODB_PROTO_FILE ${CMAKE_SOURCE_DIR}/proto/nanodb_cluster.proto)
+    set(NANODB_PROTO_GEN_DIR ${CMAKE_BINARY_DIR}/generated)
+    file(MAKE_DIRECTORY ${NANODB_PROTO_GEN_DIR})
+
+    get_target_property(GRPC_CPP_PLUGIN_LOCATION gRPC::grpc_cpp_plugin LOCATION)
+
+    add_custom_command(
+        OUTPUT
+            "${NANODB_PROTO_GEN_DIR}/nanodb_cluster.pb.cc"
+            "${NANODB_PROTO_GEN_DIR}/nanodb_cluster.pb.h"
+            "${NANODB_PROTO_GEN_DIR}/nanodb_cluster.grpc.pb.cc"
+            "${NANODB_PROTO_GEN_DIR}/nanodb_cluster.grpc.pb.h"
+        COMMAND protobuf::protoc
+        ARGS --grpc_out "${NANODB_PROTO_GEN_DIR}"
+             --cpp_out "${NANODB_PROTO_GEN_DIR}"
+             -I "${CMAKE_SOURCE_DIR}/proto"
+             --plugin=protoc-gen-grpc="${GRPC_CPP_PLUGIN_LOCATION}"
+             "${NANODB_PROTO_FILE}"
+        DEPENDS "${NANODB_PROTO_FILE}"
+    )
+
+    add_library(nanodb_proto OBJECT
+        ${NANODB_PROTO_GEN_DIR}/nanodb_cluster.pb.cc
+        ${NANODB_PROTO_GEN_DIR}/nanodb_cluster.grpc.pb.cc
+    )
+    target_include_directories(nanodb_proto PUBLIC ${NANODB_PROTO_GEN_DIR})
+    target_link_libraries(nanodb_proto PUBLIC gRPC::grpc++ protobuf::libprotobuf)
+
+    add_executable(nano_shard_node cluster/shard_node_main.cpp)
+    target_include_directories(nano_shard_node PRIVATE
+        ${CMAKE_SOURCE_DIR}/extern/httplib
+        ${CMAKE_SOURCE_DIR}/include/third_party
+    )
+    target_link_libraries(nano_shard_node PRIVATE nano_core nanodb_proto OpenMP::OpenMP_CXX)
+
+    add_executable(nano_coordinator cluster/coordinator_main.cpp)
+    target_include_directories(nano_coordinator PRIVATE
+        ${CMAKE_SOURCE_DIR}/extern/httplib
+        ${CMAKE_SOURCE_DIR}/include/third_party
+    )
+    target_link_libraries(nano_coordinator PRIVATE nano_core nanodb_proto OpenMP::OpenMP_CXX)
+endif()
+
 # ---- Benchmarks ----
 add_executable(benchmark_throughput benchmarks/benchmark_throughput.cpp)
 target_link_libraries(benchmark_throughput PRIVATE nano_core OpenMP::OpenMP_CXX)

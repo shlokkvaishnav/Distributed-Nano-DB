@@ -16,10 +16,10 @@ jobs:
           submodules: recursive
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake g++ libomp-dev
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ libomp-dev protobuf-compiler protobuf-compiler-grpc libprotobuf-dev libgrpc++-dev libgrpc-dev pkg-config
 
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DNANODB_BUILD_PYTHON=OFF -DNANODB_BUILD_SERVER=ON
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DNANODB_BUILD_PYTHON=OFF -DNANODB_BUILD_SERVER=ON -DNANODB_BUILD_CLUSTER=ON
 
       - name: Build
         run: cmake --build build -j$(nproc)
@@ -38,3 +38,6 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t nanodb:ci .
+
+      - name: Build Distributed Docker image
+        run: cd deploy && docker compose -f docker-compose.cluster.yml build

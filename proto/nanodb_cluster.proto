@@ -8,6 +8,8 @@ service ShardService {
   rpc Delete(DeleteRequest) returns (DeleteResponse);
   rpc Stats(StatsRequest) returns (StatsResponse);
   rpc Ping(PingRequest) returns (PingResponse);
+  rpc ListLocalIds(ListLocalIdsRequest) returns (ListLocalIdsResponse);
+  rpc GetVector(GetVectorRequest) returns (GetVectorResponse);
 }
 
 message InsertRequest {
@@ -60,4 +62,23 @@ message PingRequest {}
 message PingResponse {
   bool ok = 1;
   string shard_id = 2;
+}
+
+message ListLocalIdsRequest {}
+
+message ListLocalIdsResponse {
+  repeated string external_ids = 1;
+  bool ok = 2;
+  string error = 3;
+}
+
+message GetVectorRequest {
+  string external_id = 1;
+}
+
+message GetVectorResponse {
+  bool ok = 1;
+  repeated float vector = 2;
+  string metadata = 3;
+  string error = 4;
 }

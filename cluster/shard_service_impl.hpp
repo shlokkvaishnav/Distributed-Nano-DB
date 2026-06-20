@@ -76,6 +76,35 @@ public:
         return grpc::Status::OK;
     }
 
+    grpc::Status ListLocalIds(grpc::ServerContext*, const ListLocalIdsRequest*,
+                               ListLocalIdsResponse* response) override {
+        for (const auto& id : id_map_.list_all_external_ids()) {
+            response->add_external_ids(id);
+        }
+        response->set_ok(true);
+        return grpc::Status::OK;
+    }
+
+    grpc::Status GetVector(grpc::ServerContext*, const GetVectorRequest* request,
+                            GetVectorResponse* response) override {
+        uint32_t local_id;
+        if (!id_map_.lookup(request->external_id(), local_id)) {
+            response->set_ok(false);
+            response->set_error("external_id not found on this shard");
+            return grpc::Status::OK;
+        }
+        auto vec = index_.get_vector_data(local_id);
+        if (vec.empty()) {
+            response->set_ok(false);
+            response->set_error("vector data unavailable (deleted or out of range)");
+            return grpc::Status::OK;
+        }
+        for (float f : vec) response->add_vector(f);
+        response->set_metadata(index_.get_metadata(local_id));
+        response->set_ok(true);
+        return grpc::Status::OK;
+    }
+
 private:
     HNSW& index_;
     IdMapStore& id_map_;

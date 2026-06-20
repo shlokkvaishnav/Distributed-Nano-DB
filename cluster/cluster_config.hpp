@@ -34,5 +34,22 @@ inline std::vector<ShardEndpoint> load_cluster_config(const std::string& path) {
     return shards;
 }
 
+inline void save_cluster_config(const std::string& path, const std::vector<ShardEndpoint>& shards) {
+    nlohmann::json j;
+    j["shards"] = nlohmann::json::array();
+    for (const auto& ep : shards) {
+        j["shards"].push_back({
+            {"shard_id", ep.shard_id},
+            {"host", ep.host},
+            {"port", ep.port}
+        });
+    }
+    std::ofstream f(path);
+    if (!f.is_open()) {
+        throw std::runtime_error("cannot write cluster config: " + path);
+    }
+    f << j.dump(2);
+}
+
 } // namespace cluster
 } // namespace nanodb

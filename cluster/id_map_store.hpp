@@ -66,6 +66,14 @@ public:
         return reverse_.size();
     }
 
+    // Returns a copy of every external_id currently mapped on this shard, in
+    // local_id order. Used by the Phase 2 rebalancer to discover what a
+    // shard owns when deciding what needs to migrate.
+    std::vector<std::string> list_all_external_ids() {
+        std::lock_guard<std::mutex> lock(lock_);
+        return reverse_;
+    }
+
 private:
     std::string filepath_;
     std::fstream file_stream_;

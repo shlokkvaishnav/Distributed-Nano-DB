@@ -22,3 +22,7 @@ add_test(NAME Routing COMMAND test_routing)
 # Test: IdMapStore (assign, lookup, persistence)
 add_executable(test_id_map_store test_id_map_store.cpp)
 add_test(NAME IdMapStore COMMAND test_id_map_store)
+
+# Test: HashRing (Phase 2 consistent hashing)
+add_executable(test_hash_ring test_hash_ring.cpp)
+add_test(NAME HashRing COMMAND test_hash_ring)

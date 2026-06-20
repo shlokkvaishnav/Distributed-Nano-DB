@@ -242,6 +242,17 @@ namespace nanodb {
             return get_node(id)->is_deleted;
         }
 
+        // Helper: copy of the raw vector for a given id. Used by the Phase 2
+        // migration path to move a vector's data to another shard. Returns
+        // an empty vector if id is out of range or tombstoned.
+        std::vector<float> get_vector_data(id_t id) {
+            size_t offset = HEADER_SIZE + (size_t)id * sizeof(Node);
+            if (offset + sizeof(Node) > storage_.get_size()) return {};
+            Node* node = get_node(id);
+            if (node->is_deleted) return {};
+            return std::vector<float>(node->vector, node->vector + config::VECTOR_DIM);
+        }
+
         // Helper: current number of live (non-deleted) elements
         size_t size() const { return element_count_; }
 

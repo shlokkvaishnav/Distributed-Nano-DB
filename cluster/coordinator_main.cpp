@@ -953,7 +953,7 @@ int main() {
             }
             if (!valid_replica) {
                 res.status = 404;
-                res.set_content(R"({"error":"shard or replica not found"})", "application/json");
+                res.set_content(R"({"error":"no such active replica for this shard"})", "application/json");
                 return;
             }
 
@@ -965,7 +965,7 @@ int main() {
             }
             apply_pending_raft_commands();
             persist_cluster_state();
-            json ok = {{"status", "ok"}, {"shard_id", shard_id}, {"new_primary_replica_id", replica_id}};
+            json ok = {{"status", "ok"}, {"shard_id", shard_id}, {"primary_replica_id", replica_id}};
             res.set_content(ok.dump(), "application/json");
         } catch (const std::exception& e) {
             res.status = 400;

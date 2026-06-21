@@ -33,3 +33,13 @@ if(NANODB_BUILD_CLUSTER)
     target_link_libraries(test_raft_commit_safety PRIVATE nanodb_raft_proto)
     add_test(NAME RaftCommitSafety COMMAND test_raft_commit_safety)
 endif()
+
+# Test: cluster_config.hpp atomic-write race (Phase 5) -- permanent
+# regression guard for the non-atomic save_cluster_config() bug found via
+# the chaos harness; see cluster/cluster_config.hpp.
+if(NANODB_BUILD_CLUSTER)
+    add_executable(test_cluster_config_race test_cluster_config_race.cpp)
+    target_include_directories(test_cluster_config_race PRIVATE
+        ${CMAKE_SOURCE_DIR}/include/third_party)
+    add_test(NAME ClusterConfigRace COMMAND test_cluster_config_race)
+endif()

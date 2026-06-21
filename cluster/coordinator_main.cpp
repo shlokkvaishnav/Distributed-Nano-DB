@@ -400,6 +400,16 @@ static void health_check_loop() {
             }
             if (failures < FAILURES_BEFORE_FAILOVER) continue;
 
+            // TODO(Phase 5): Bug #2 - Failover can orphan confirmed writes.
+            // This loop promotes the "first reachable non-primary replica" without
+            // checking which replica actually has the most complete data. Because
+            // write quorum only requires the primary + one secondary, a confirmed write
+            // might exist on the primary and secondary A, but not secondary B.
+            // If the primary fails and we promote secondary B just because it answered
+            // a ping first, that confirmed write becomes invisible to strong reads and
+            // /stats, and cannot be deleted.
+            // Recommended fix: Track per-replica recency (highest epoch applied) and
+            // promote only the most up-to-date reachable candidate.
             ShardClient* candidate = nullptr;
             for (auto* r : replicas_for_shard(pool, shard_id)) {
                 if (r == primary) continue;

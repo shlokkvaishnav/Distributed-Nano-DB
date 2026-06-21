@@ -400,24 +400,58 @@ static void health_check_loop() {
             }
             if (failures < FAILURES_BEFORE_FAILOVER) continue;
 
-            // TODO(Phase 5): Bug #2 - Failover can orphan confirmed writes.
-            // This loop promotes the "first reachable non-primary replica" without
-            // checking which replica actually has the most complete data. Because
-            // write quorum only requires the primary + one secondary, a confirmed write
-            // might exist on the primary and secondary A, but not secondary B.
-            // If the primary fails and we promote secondary B just because it answered
-            // a ping first, that confirmed write becomes invisible to strong reads and
-            // /stats, and cannot be deleted.
-            // Recommended fix: Track per-replica recency (highest epoch applied) and
-            // promote only the most up-to-date reachable candidate.
+            // FIXED (was: "promotes the first reachable non-primary
+            // replica with no check for completeness" -- see git history
+            // for the original TODO). Query Stats -- already a cheap,
+            // existing RPC; element_count is effectively free to read and,
+            // because the underlying index is mmap-persisted, it's correct
+            // immediately after a replica process restart too, unlike a
+            // fresh in-memory write counter would be -- from every
+            // reachable non-primary replica, and promote whichever one
+            // has the HIGHEST element_count, not just whichever answers
+            // first. This closes the realistic, demonstrated gap from
+            // repro_failover_loss.py: a replica that was down for a
+            // sustained window and missed a contiguous block of writes
+            // has a strictly lower element_count than one that didn't, so
+            // it's never picked over a strictly-more-complete reachable
+            // alternative. Ties (including "every reachable candidate has
+            // the same count") break toward the first one encountered in
+            // replicas_for_shard's existing iteration order, which is
+            // deterministic.
+            //
+            // Residual, explicitly out of scope for this fix:
+            // element_count is a scalar proxy, not a true diff. If two
+            // DIFFERENT replicas each independently missed different
+            // individual writes at different times (rather than one
+            // replica having a single contiguous outage -- the case this
+            // fix targets, and the case real failover scenarios and the
+            // chaos harness actually produce), they could tie on count
+            // while actually holding different content, and this
+            // heuristic can't tell them apart. Closing that fully needs
+            // real reconciliation (diffing key sets) or requiring
+            // all-replica acks on every write -- both bigger, separate
+            // efforts. See phase5-execution-plan.md section 3.6 and
+            // verify_failover_fix.py for the deterministic proof this
+            // fix actually changes the automatic failover path's
+            // behavior (repro_failover_loss.py is left as-is: it forces a
+            // bad promotion via the manual /admin/shards/set_primary
+            // override on purpose, which is unrelated to this fix and
+            // intentionally still possible -- an operator using the
+            // manual override is assumed to know what they're doing).
             ShardClient* candidate = nullptr;
+            uint64_t candidate_count = 0;
             for (auto* r : replicas_for_shard(pool, shard_id)) {
                 if (r == primary) continue;
-                PingRequest preq2;
-                grpc::ClientContext pctx2;
-                pctx2.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(HEALTH_CHECK_TIMEOUT_MS));
-                PingResponse pres2;
-                if (r->stub->Ping(&pctx2, preq2, &pres2).ok() && pres2.ok()) { candidate = r; break; }
+                StatsRequest sreq2;
+                grpc::ClientContext sctx2;
+                sctx2.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(HEALTH_CHECK_TIMEOUT_MS));
+                StatsResponse sres2;
+                if (!r->stub->Stats(&sctx2, sreq2, &sres2).ok()) continue;
+                uint64_t count = sres2.element_count();
+                if (!candidate || count > candidate_count) {
+                    candidate = r;
+                    candidate_count = count;
+                }
             }
             if (!candidate) {
                 std::cerr << "[Coordinator] WARNING: shard " << shard_id

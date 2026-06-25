@@ -141,9 +141,3 @@ ctest --output-on-failure   # 10 tests
 ```
 
 Requires: CMake 3.16+, g++ 13+, protobuf-compiler, libgrpc++-dev, libomp-dev.
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE).

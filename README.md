@@ -264,9 +264,3 @@ ctest --output-on-failure   # 10 tests
 Requires: CMake 3.16+, g++ 13+, `protobuf-compiler`, `libgrpc++-dev`, `libomp-dev`.
 
 For Docker deployment only, the build happens inside the container — no local toolchain required.
-
----
-
-## Technical deep-dive
-
-Full internals documentation — every design decision at the level a senior engineer would need to modify the codebase — in [`docs/INTERNALS.md`](docs/INTERNALS.md). Covers: mmap storage engine, HNSW graph structure, SIMD distance kernels, consistent hashing, gRPC inter-node RPC, quorum replication, Raft consensus, failover, chaos testing, and observability. Includes a structured interview Q&A section.

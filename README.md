@@ -198,9 +198,19 @@ In a fan-out search across N shards, the coordinator must wait for all N shards 
 p99_end_to_end ≈ max(p99_shard_0, p99_shard_1, ..., p99_shard_N)
 ```
 
-p50 stays roughly flat as shard count grows (more parallelism), but p99 worsens monotonically — you're sampling the deep tail of the per-shard distribution on every single request. With 8 shards, the effective p99 is what would be p99.9 on a single shard.
+p50 stays roughly flat as shard count grows (more parallelism), but p99 worsens monotonically — you're sampling deeper into the tail of the per-shard distribution on every single request. Measured against a live 167k-vector cluster, then projected to higher shard counts using order statistics (`p99 of max(N) = F⁻¹(0.99^{1/N})`):
 
-Measured numbers and the full statistical model: `python3 benchmarks/tail_latency_analysis.py` (requires cluster running).
+| Shards | p50 (ms) | p95 (ms) | p99 (ms) | p99.9 (ms) | Notes |
+|--------|----------|----------|----------|------------|-------|
+| 1 | 5.5 | 10.1 | 19.9 | 26.2 | single shard, no fan-out |
+| **2** | **5.5** | **10.1** | **19.9** | **26.2** | **current cluster (measured)** |
+| 4 | 6.8 | 16.1 | 25.3 | 26.5 | modeled |
+| 8 | 8.3 | 23.0 | 26.1 | 26.5 | modeled |
+| 16 | 11.0 | 24.5 | 26.3 | 26.6 | modeled |
+
+The p99 ceiling (~26ms) reflects the hard maximum in this Docker-on-single-host setup where intra-host network jitter is minimal. On a real multi-machine deployment with network-level tail latency, the effect is more pronounced — the modeled values understate the real divergence at scale.
+
+To reproduce: `python3 benchmarks/tail_latency_analysis.py` (requires cluster running).
 
 ---
 

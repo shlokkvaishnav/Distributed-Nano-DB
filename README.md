@@ -1,23 +1,122 @@
 <div align="center">
 
-# Distributed Nano-DB
+# Nano-DB
 
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-orange?style=flat-square&logo=cplusplus)](https://en.cppreference.com/w/cpp/17)
 [![Build](https://img.shields.io/github/actions/workflow/status/shlokkvaishnav/Distributed-Nano-DB/ci.yml?style=flat-square&label=build)](https://github.com/shlokkvaishnav/Distributed-Nano-DB/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/shlokkvaishnav/Distributed-Nano-DB/pkgs/container/nano-db)
 
-**A chaos-tested distributed vector database, built from scratch in C++17.**
+**A Raft-replicated vector database, built from scratch in C++17.**
+
+> I built a 3-node Raft cluster backed by a custom HNSW engine to find out what actually happens when you kill the leader mid-write.
+> Answer: the cluster re-elects in under a second and zero confirmed writes are dropped.
 
 </div>
 
 ---
 
-## The problem
+## What this is
 
-Every vector database hits the same wall. You start single-node — fast, simple, zero operational overhead. Then you try to scale. At a few million vectors you run out of RAM. At zero fault tolerance, one process crash means every search fails until someone restarts it. The production systems you've heard of (Pinecone, Qdrant, Weaviate, Milvus) solved this years ago: shard vectors across nodes, replicate for durability, use distributed consensus to decide who owns what. The question is whether you actually understand how any of that works.
+A distributed vector database built from first principles in C++17 — no consensus library, no managed queue, no distributed key-value store. Every distributed systems primitive here is implemented from scratch: the Raft log, the quorum write protocol, the consistent hash ring, the epoch fence.
 
-This project is an attempt to find out. Starting from a single-node HNSW vector engine in C++, the goal was to build the distributed coordination layer on top — without reaching for a consensus library, a managed message queue, or a distributed key-value store. Every distributed systems primitive here is implemented from first principles: the hash ring, the Raft log, the quorum write protocol, the epoch fence. The non-trivial part isn't any one of these in isolation — it's making them compose correctly under failures, where the bugs are timing-dependent and only surface under load with random process kills.
+**If you need a production vector database, use [Qdrant](https://qdrant.tech) or [Milvus](https://milvus.io).** This project exists to understand what's inside them. Raft consensus, quorum writes, and scatter-gather fan-out are the mechanisms that make Qdrant work; this codebase implements the same primitives from scratch to make them inspectable, testable, and breakable.
+
+The non-trivial part isn't any one mechanism in isolation — it's making them compose correctly under failures, where the bugs are timing-dependent and only surface under load with random process kills.
+
+---
+
+## The demo: kill the leader
+
+```
+$ ./cluster.sh up
+Starting Nano-DB cluster (9 containers)...
+Waiting for Raft leader election...
+  Elapsed: 8s — leader elected.
+
+Cluster ready.
+
+  API:     http://localhost:8080
+  Grafana: http://localhost:3000  (admin / nanodb)
+
+$ python3 scripts/demo_chaos.py
+
+============================================================
+  Nano-DB Chaos Demo: Kill the Leader, Lose Zero Writes
+============================================================
+
+Cluster is up. Current leader: coordinator-0 (term=3)
+
+[1/3] Inserting 100 vectors (4 concurrent writers)...
+  Inserted 100/100 confirmed.
+
+[2/3] Killing the Raft leader...
+  Leader: coordinator-0 (term=3)
+  Container: nano-db-coordinator-0-1
+  Command: docker kill nano-db-coordinator-0-1
+
+  Writing continues through the outage window...
+
+[3/3] Waiting for new leader...
+
+  New leader: coordinator-1 (term=4)
+  Election time: 0.71s
+
+  Verifying all confirmed writes are still searchable...
+
+============================================================
+  Results
+============================================================
+  Vectors confirmed before kill:  100
+  Writes dropped:                 0
+  Election time:                  0.71s
+  Cluster element count after:    100
+
+  All confirmed writes survived the leader kill.
+  See Grafana (localhost:3000) for failover_total and vectors_total graphs.
+```
+
+The Grafana dashboard shows `nanodb_failovers_total` tick up by 1 and `nanodb_vectors_total` never dip:
+
+![Grafana Dashboard](docs/images/grafana.png)
+
+---
+
+## Quick start
+
+```bash
+git clone --recurse-submodules https://github.com/shlokkvaishnav/Distributed-Nano-DB.git
+cd Distributed-Nano-DB
+./cluster.sh up
+```
+
+Insert a vector:
+
+```bash
+curl -X POST localhost:8080/vectors \
+  -H "Content-Type: application/json" \
+  -d '{"id": "v1", "vector": [0.1, 0.2, ...128 values...], "metadata": "hello"}'
+```
+
+Search:
+
+```bash
+curl -X POST localhost:8080/search \
+  -H "Content-Type: application/json" \
+  -d '{"vector": [0.1, 0.2, ...], "k": 5, "consistency": "strong"}'
+```
+
+Kill the leader and verify zero data loss:
+
+```bash
+python3 scripts/demo_chaos.py
+```
+
+Run 60 seconds of continuous random process kills across all 12 nodes:
+
+```bash
+./cluster.sh chaos
+```
 
 ---
 
@@ -33,12 +132,30 @@ This project is an attempt to find out. Starting from a single-node HNSW vector 
 
 ---
 
+## Fault tolerance
+
+Three invariants that the chaos harness validates continuously:
+
+1. **No confirmed write disappears.** Any write that received HTTP 201 (quorum met) must survive any combination of process kills. "Quorum met" means the primary acknowledged and at least one secondary acknowledged.
+
+2. **No split-brain.** No shard ever has two primaries simultaneously. Epoch tokens on every write ensure a demoted primary's in-flight requests are rejected by shards even before the new coordinator detects the failover.
+
+3. **Full recovery.** After chaos stops, the cluster returns to a fully consistent state. No manual intervention required.
+
+To verify yourself:
+
+```bash
+./cluster.sh chaos   # 60s of random kills, invariant report at the end
+```
+
+---
+
 ## Key features
 
 | Category | What's built |
 |----------|-------------|
 | **Consensus** | Raft from scratch — leader election, log replication, Figure 8 safety, log compaction + InstallSnapshot |
-| **Replication** | Primary-replica with quorum writes. Coordinator fan-out, shard nodes remain simple |
+| **Replication** | Primary-replica with quorum writes. Primary's acknowledgement is mandatory, not just majority |
 | **Fencing** | Epoch tokens on every write — stale coordinators are rejected by shards after a failover |
 | **Failover** | Automatic primary promotion based on replica completeness, not just reachability |
 | **Routing** | Consistent hashing with 200 virtual nodes; sequential-ID clustering bug found and fixed |
@@ -50,17 +167,40 @@ This project is an attempt to find out. Starting from a single-node HNSW vector 
 
 ## Performance
 
-| Metric | Value |
-|--------|-------|
-| Cluster insert throughput | **163 vectors/sec** (quorum writes, 4 concurrent clients) |
-| Search latency p50 | **8 ms** (scatter-gather across 2 shards) |
-| Search latency p95 | **20 ms** |
-| Failover recovery time | **< 1 second** |
-| Single-node insert throughput | **6,500 TPS** (8 threads, no replication) |
-| Single-node search latency | **0.15 ms** |
-| Recall@10 | **95%** |
+Measured with Docker Compose on a single host (2 shards × 3 replicas + 3 Raft coordinators, Docker bridge network). All cluster numbers include HTTP and replication overhead.
 
-Cluster numbers measured with Docker Compose on a single host (2 shards × 3 replicas + 3 Raft coordinators). The bottleneck is virtual network round-trips, not the engine.
+| Metric | Value | Notes |
+|--------|-------|-------|
+| Cluster insert throughput | **146 vec/s** | 4 concurrent clients, quorum writes<sup>1</sup> |
+| Search latency p50 | **5.9 ms** | scatter-gather across 2 shards |
+| Search latency p95 | **10.4 ms** | |
+| Search latency p99 | **27.9 ms** | slowest shard gates the result — see [tail latency](#tail-latency-in-scatter-gather) |
+| Failover recovery | **0.5 s** | primary killed, replica promoted by element count |
+| Raft leader election | **< 1 s** | randomized 300–600 ms timeouts |
+| Single-node insert | **6,500 TPS** | 8 threads, no replication, no HTTP overhead |
+| Single-node search | **0.15 ms** | |
+| Recall@10 | **95%** | |
+
+<sup>1</sup> 163 vec/s at 8 concurrent clients; 146 vec/s is the reproducible 4-client result from `benchmarks/cluster_benchmark_results.json`. To reproduce: `./cluster.sh up && python3 benchmarks/cluster_benchmark.py`.
+
+### Benchmark methodology
+
+- **Hardware:** all nodes on a single host via Docker Compose (Docker bridge network round-trip: ~0.1 ms)
+- **Warm-up:** 500 vectors inserted before the measurement window opens
+- **Query mix:** random 128-dimensional unit vectors, k=10, `"consistency": "strong"`
+- **Competitor comparisons** (`benchmarks/compare_against_competitors.py`) measure FAISS and hnswlib as direct in-process library calls with no HTTP or replication overhead — an apples-to-oranges comparison against Nano-DB's cluster numbers, but the right baseline for the single-node storage engine
+
+### Tail latency in scatter-gather
+
+In a fan-out search across N shards, the coordinator must wait for all N shards before merging and returning results. This means:
+
+```
+p99_end_to_end ≈ max(p99_shard_0, p99_shard_1, ..., p99_shard_N)
+```
+
+p50 stays roughly flat as shard count grows (more parallelism), but p99 worsens monotonically — you're sampling the deep tail of the per-shard distribution on every single request. With 8 shards, the effective p99 is what would be p99.9 on a single shard.
+
+Measured numbers and the full statistical model: `python3 benchmarks/tail_latency_analysis.py` (requires cluster running).
 
 ---
 
@@ -70,7 +210,7 @@ Cluster numbers measured with Docker Compose on a single host (2 shards × 3 rep
 
 The Raft implementation is the centrepiece of this project, built from the paper with no external library.
 
-**Leader election** uses randomized timeouts (300–600ms) to prevent split votes. A candidate only wins if its log is at least as up-to-date as the voter's — this isn't just term comparison, it's a compound check on both term and index that prevents a stale node from becoming leader.
+**Leader election** uses randomized timeouts (300–600 ms) to prevent split votes. A candidate only wins if its log is at least as up-to-date as the voter's — not just term comparison, but a compound check on both term and index that prevents a stale node from becoming leader.
 
 **The Figure 8 commit rule** — the hardest part of Raft — is implemented as a pure function (`compute_new_commit_index`) and tested with a constructed adversarial 5-node scenario plus a mutation test that proves the check is load-bearing, not incidental.
 
@@ -78,55 +218,34 @@ The Raft implementation is the centrepiece of this project, built from the paper
 
 ---
 
-## Quick start
-
-```bash
-git clone --recurse-submodules https://github.com/shlokkvaishnav/Distributed-Nano-DB.git
-cd Distributed-Nano-DB/deploy
-docker compose -f docker-compose.cluster.yml up -d
-```
-
-This starts 6 shard replicas + 3 Raft coordinators. Insert a vector:
-
-```bash
-curl -X POST localhost:8080/vectors \
-  -H "Content-Type: application/json" \
-  -d '{"id": "hello", "vector": [0.1, 0.2, ...128 values...], "metadata": "world"}'
-```
-
-Search:
-
-```bash
-curl -X POST localhost:8080/search \
-  -H "Content-Type: application/json" \
-  -d '{"vector": [0.1, 0.2, ...], "k": 5, "consistency": "strong"}'
-```
-
----
-
 ## Observability
 
-![Grafana Dashboard](docs/images/grafana.png)
-
 ```bash
-docker compose -f docker-compose.cluster.yml -f docker-compose.monitoring.yml up -d
+./cluster.sh up   # monitoring stack is included
 ```
 
-Grafana at `localhost:3000` (admin/nanodb) with a pre-built dashboard: cluster throughput, search latency percentiles, Raft term changes, failover events, and per-shard stats.
+Grafana at `localhost:3000` (admin/nanodb) with a pre-built dashboard: cluster throughput, search latency percentiles, Raft term changes, failover events, and per-shard stats. All panels are backed by 14 Prometheus metrics exported at `GET /metrics` on every coordinator.
 
 ---
 
-## Chaos testing
+## Testing
+
+**Unit tests (10):** Raft Figure 8 commit safety (adversarial 5-node scenario + mutation test), log compaction, consistent hash ring distribution, sequential-ID routing, ID map store persistence, concurrent config writes, HNSW correctness, SIMD distance accuracy, and mmap persistence.
+
+```bash
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DNANODB_BUILD_CLUSTER=ON
+cmake --build . -j$(nproc)
+ctest --output-on-failure
+```
+
+**Chaos harness** (standalone, no Docker required — runs binaries directly):
 
 ```bash
 python3 chaos_harness.py --duration 60
 ```
 
-The harness orchestrates the full cluster, runs continuous writes, randomly kills and restarts processes, and validates three invariants throughout:
-
-- No confirmed write (HTTP 201) ever disappears
-- No shard ever has two primaries simultaneously
-- The cluster fully recovers once chaos stops
+Orchestrates the full cluster from binaries, runs continuous writes, randomly kills and restarts any of the 12 processes (9 shard replicas + 3 coordinators), and validates the three fault-tolerance invariants throughout.
 
 ---
 
@@ -142,4 +261,12 @@ cmake --build . -j$(nproc)
 ctest --output-on-failure   # 10 tests
 ```
 
-Requires: CMake 3.16+, g++ 13+, protobuf-compiler, libgrpc++-dev, libomp-dev.
+Requires: CMake 3.16+, g++ 13+, `protobuf-compiler`, `libgrpc++-dev`, `libomp-dev`.
+
+For Docker deployment only, the build happens inside the container — no local toolchain required.
+
+---
+
+## Technical deep-dive
+
+Full internals documentation — every design decision at the level a senior engineer would need to modify the codebase — in [`docs/INTERNALS.md`](docs/INTERNALS.md). Covers: mmap storage engine, HNSW graph structure, SIMD distance kernels, consistent hashing, gRPC inter-node RPC, quorum replication, Raft consensus, failover, chaos testing, and observability. Includes a structured interview Q&A section.

@@ -109,6 +109,8 @@ services:
       - NANODB_RAFT_PEERS_CONFIG=/app/config/raft_peers.docker.json
       - NANODB_RAFT_STATE_PATH=/app/raft_data/raft_state.bin
       - NANODB_RAFT_LOG_PATH=/app/raft_data/raft_log.bin
+    ports:
+      - "8081:8080"
     depends_on:
       - shard-0-replica-0
       - shard-0-replica-1
@@ -133,6 +135,8 @@ services:
       - NANODB_RAFT_PEERS_CONFIG=/app/config/raft_peers.docker.json
       - NANODB_RAFT_STATE_PATH=/app/raft_data/raft_state.bin
       - NANODB_RAFT_LOG_PATH=/app/raft_data/raft_log.bin
+    ports:
+      - "8082:8080"
     depends_on:
       - shard-0-replica-0
       - shard-0-replica-1

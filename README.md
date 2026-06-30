@@ -3,9 +3,9 @@
 # Nano-DB
 
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-orange?style=flat-square&logo=cplusplus)](https://en.cppreference.com/w/cpp/17)
-[![Build](https://img.shields.io/github/actions/workflow/status/shlokkvaishnav/Distributed-Nano-DB/ci.yml?style=flat-square&label=build)](https://github.com/shlokkvaishnav/Distributed-Nano-DB/actions)
+[![Build](https://img.shields.io/github/actions/workflow/status/shlokkvaishnav/Nano-DB/ci.yml?style=flat-square&label=build)](https://github.com/shlokkvaishnav/Nano-DB/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Docker](https://img.shields.io/badge/docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/shlokkvaishnav/Distributed-Nano-DB/pkgs/container/nano-db)
+[![Docker](https://img.shields.io/badge/docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/shlokkvaishnav/Nano-DB/pkgs/container/nano-db)
 
 **A Raft-replicated vector database, built from scratch in C++17.**
 
@@ -85,8 +85,8 @@ Raft term jumps 455→456 as coordinator-1 wins the election; shard failovers=0 
 ## Quick start
 
 ```bash
-git clone --recurse-submodules https://github.com/shlokkvaishnav/Distributed-Nano-DB.git
-cd Distributed-Nano-DB
+git clone --recurse-submodules https://github.com/shlokkvaishnav/Nano-DB.git
+cd Nano-DB
 ./cluster.sh up
 ```
 
